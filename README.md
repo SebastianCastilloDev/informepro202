@@ -10,7 +10,7 @@
 
 Se nos ha encargado la tarea de resolver un problema asociado a bases de datos, para ello hemos obtenido un archivo al azar del sitio web https://kaggle.com. 
 
-Para la presentación y explicacion de los mecanismos utilizados en la elaboración de la solución, utilizaremos el lenguaje de TRANSACT-SQL
+Para la presentación y explicacion de los mecanismos utilizados en la elaboración de la solución, utilizaremos el lenguaje TRANSACT-SQL
 
 El archivo tiene formato csv, con 23 columnas, las cuales se indican a continuacion.
 
