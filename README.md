@@ -80,13 +80,13 @@ Si observamos las antepenúltimas filas vemos que tenemos valores separados por 
 
 El modelo entidad relación que describe nuestros datos es el que se muestra a continuación.  
   
-![Modelo entidad relación](/modelo-entidad-relacion.png)  
+![Modelo entidad relación](/img/modelo-entidad-relacion.png)  
 
 ### Diagrama físico
 
 El diagrama físico que describe nuestros datos es el siguiente.  
 
-![Diagrama físico](/diagrama-fisico.png)
+![Diagrama físico](/img/diagrama-fisico.png)
 
 # Desarrollo de la solución
 
@@ -129,7 +129,83 @@ A continuación explicaremos las bases y conceptos con los cuales hemos constru�
 
 Para llevar a cabo la tarea de realizar la primera separacion de valores, nos propusimos desarrollar un código en el lenguaje de programación C#, el cual puede revisar en este [enlace](https://gist.github.com/SebastianCastilloDev/f8fc801beda3f703b1e0ad25629ca864#file-lectorarchivoscsv-cs)
 
+En este [archivo](/sql/paso%201%20_%20crear%20y%20poner%20datos%20en%20tabla%20peliculas.sql) se encuentran las instrucciones SQL que realizan la tarea. contiene 10 filas para realizar una prueba.
+
 ### Paso 2:
+
+
+la tabla **película** tiene la siguiente estructura.
+```sql
+create table pelicula(
+	id int primary key,
+	titulo varchar(max),
+	votacion_promedio float,
+	votacion_recuento int,
+	fecha_lanzamiento varchar(12),
+	ingresos bigint,
+	duracion int,
+	adult bit,
+	ruta_backdrop varchar(max),
+	presupuesto bigint,
+	pagina_web varchar(max),
+	imdb_id varchar(max),
+	idioma_original varchar(max),
+	titulo_original varchar(max),
+	sinopsis varchar(max),
+	popularidad varchar(10),
+	ruta_poster varchar(max),
+	tagline varchar(max)
+)
+```
+A continuación expondremos la estructura de las otras tablas.
+
+```sql
+
+create table generos(
+	idGenero int primary key identity,
+	genero varchar(max) not null
+)
+
+create table companias_productoras(
+	idCompania_productora int primary key identity,
+	productora varchar(max) not null
+)
+
+create table paises_productores(
+	idPaises_productores int primary key identity,
+	pais varchar(max) not null
+)
+create table idiomas_disponibles(
+	idIdiomas_disponibles int primary key identity,
+	idioma varchar(max) not null
+)
+
+create table pelicula_genero(
+	id int primary key identity,
+	idGenero int references generos(idGenero) not null,
+	idPelicula int references pelicula(id) not null
+)
+
+create table pelicula_compania(
+	id int primary key identity,
+	idCompania_productora int references companias_productoras(idCompania_productora) not null,
+	idPelicula int references pelicula(id) not null
+)
+
+create table pelicula_paises_productores(
+	id int primary key identity,
+	idPaises_productores int references paises_productores(idPaises_productores) not null,
+	idPelicula int references pelicula(id) not null
+)
+
+create table pelicula_idiomas(
+	id int primary key identity,
+	idIdiomas_disponibles int references idiomas_disponibles(idIdiomas_disponibles) not null,
+	idPelicula int references pelicula(id) not null
+)
+```
+
+### Paso 3:
 
 Analicemos la siguiente cadena de caracteres
 ```
@@ -193,7 +269,7 @@ FROM peliculas
 ```
 Al realizar esta consulta, nos devuelve el siguiente resultado.
 
-![Case](/consultacase.png)
+![Case](/img/consultacase.png)
 
 Finalmente mostraremos un ejemplo de uso de la instrucción CROSS APPLY
 ```sql
@@ -209,36 +285,13 @@ CROSS APPLY STRING_SPLIT(valores,',')
 
 Al ejecutar el fragmento de código anterior obtenemos el siguiente resultado. Note que este procedimiento es especialmente útil para la implementación de tablas pivot.
 
-![Case](/cross-apply.png)
+![Case](/img/cross-apply.png)
 ## Soluciones desarrolladas.
 
 A través de la combinación de estos conceptos confeccionamos una serie de algoritmos en TRANSACT-SQL que nos permiten llevar los datos de un archivo csv de origen, a una base de datos normalizada a su 3FN disponible para ser implementada en producción.
 
 ### Inserción masiva de datos de la tabla películas a la tabla **película**
 
-la tabla **película** tiene la siguiente estructura.
-```sql
-create table pelicula(
-	id int primary key,
-	titulo varchar(max),
-	votacion_promedio float,
-	votacion_recuento int,
-	fecha_lanzamiento varchar(12),
-	ingresos bigint,
-	duracion int,
-	adult bit,
-	ruta_backdrop varchar(max),
-	presupuesto bigint,
-	pagina_web varchar(max),
-	imdb_id varchar(max),
-	idioma_original varchar(max),
-	titulo_original varchar(max),
-	sinopsis varchar(max),
-	popularidad varchar(10),
-	ruta_poster varchar(max),
-	tagline varchar(max)
-)
-```
 para insertar los datos, utilizaremos la siguiente inserción
 ```sql
 INSERT INTO pelicula (id, titulo, votacion_promedio, votacion_recuento, fecha_lanzamiento, ingresos, duracion, adult, ruta_backdrop, presupuesto, pagina_web, imdb_id, idioma_original, titulo_original, sinopsis, popularidad, ruta_poster, tagline)
@@ -308,7 +361,7 @@ select * from idiomas_disponibles
 ```
 Al ejecutar la última línea del fragmento de código anterior, obtenemos el siguiente resultado.
 
-![Idiomas](/idioma.png)
+![Idiomas](/img/idioma.png)
 
 Finalmente para la implementación de tablas pivot, vamos a utilizar el siguiente algoritmo.
 ```sql
@@ -353,7 +406,32 @@ drop table #temp_pelicula_idioma;
 
 el cual arroja las siguientes filas en la tabla **pelicula_idiomas**
 
-![pelicula_idiomas](/pelicula-idiomas.png)
+![pelicula_idiomas](/img/pelicula-idiomas.png)
+
+# Procedimientos almacenados
+
+Los procedimientos almacenados serán los encargados de ejecutar las tareas que se han descrito en este informe, para ello hemos creado 5 procedimientos almacenados que realizan las siguientes tareas.
+
+* SP 1: Realiza la tarea de crear la tabla de origen de datos **películas** [link](/sql/SP1.sql)
+* SP 2: Crea las tablas normalizadas [link](/sql/SP2.sql)
+* SP 3: Elimina caracteres no deseados de algunas columnas de la tabla peliculas [link](/sql/SP3.sql)
+* SP 4: Rellena con datos las tablas que almacenan paises, generos, compañias e idiomas [link](/sql/SP4.sql)
+* SP 5: Rellena con datos, las tablas pivot. [link](/sql/SP5.sql)
+
+# Vistas
+
+Dado que ya contamos con una base de datos normalizada y con datos disponibles para consultar, hemos desarrollado 5 vistas de interés para nuestro cliente:
+
+* Vista idiomasDisponibles: Muestra un alista de los idiomas disponibles
+* Vista numeroPeliculas: Muestra la cantidad de peliculas disponibles
+* Vista peliculas2010HastaHoyAccion: Muestra las peliculas que fueron lanzadas desde 2010 hasta hoy.
+* Vista peliculasHorasMinutos: Ver la duracion de las peliculas en un formato; x horas y minutos
+* Vista peliculasUnitedKingdom: Ver las peliculas producidas en Reino Unido.
+
+En este [enlace](/sql/vistas.sql), se encuentra el código fuente. 
+
+
+
 
 
 
