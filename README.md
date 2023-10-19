@@ -142,7 +142,7 @@ Nos interesa primeramente remover los caracteres '\\\"', para ello, nos valdremo
 ```sql
 DECLARE @miCadena VARCHAR(MAX);
 SET @miCadena = '\"Adventure, Fantasy,Action\"'
-PRINT SUBSTRING(@miCadena, 3, LEN(@miCadena) - 4)
+PRINT SUBSTRING(@miCadena, 3, LEN(@miCadena) - 4) -- 'Adventure, Fantasy,Action'
 ```
 El paso siguiente será separar nuestros valores, considerando como carácter separador, la coma: ' , '. Para ello utilizaremos la función STRING_SPLIT, la cual toma una cadena y devuelve una consulta con cada elemento. En el siguiente ejemplo mostramos como podemos separar la cadena @miCadena, de acuerdo a los valores contenidos entre *comas*.
 ```sql
@@ -165,7 +165,7 @@ SET @miCadena = 'Adventure'
 SELECT CHARINDEX('e',@miCadena) -- 4
 ```
 
-Tambien disponemos de estructuras de control tales como IF ELSE, o CASE. Se debe tener en cuenta que no se pueden utilizar estructuras IF ELSE dentro de la instrucción SELECT.
+También disponemos de estructuras de control tales como IF ELSE, o CASE. Se debe tener en cuenta que no se pueden utilizar estructuras IF ELSE dentro de la instrucción SELECT.
 ```sql
 DECLARE @caracterABuscar AS char
 DECLARE @cadena AS varchar(100)
@@ -193,11 +193,169 @@ FROM peliculas
 ```
 Al realizar esta consulta, nos devuelve el siguiente resultado.
 
-![Diagrama físico](/consultacase.png)
+![Case](/consultacase.png)
 
+Finalmente mostraremos un ejemplo de uso de la instrucción CROSS APPLY
+```sql
+DECLARE @tabla AS TABLE (
+	id INT IDENTITY,
+	valores VARCHAR(max)
+) INSERT INTO @tabla VALUES ('1,2,3'),('3,4')
+
+SELECT id, value 
+FROM @tabla 
+CROSS APPLY STRING_SPLIT(valores,',')
+``` 
+
+Al ejecutar el fragmento de código anterior obtenemos el siguiente resultado. Note que este procedimiento es especialmente útil para la implementación de tablas pivot.
+
+![Case](/cross-apply.png)
 ## Soluciones desarrolladas.
 
 A través de la combinación de estos conceptos confeccionamos una serie de algoritmos en TRANSACT-SQL que nos permiten llevar los datos de un archivo csv de origen, a una base de datos normalizada a su 3FN disponible para ser implementada en producción.
+
+### Inserción masiva de datos de la tabla películas a la tabla **película**
+
+la tabla **película** tiene la siguiente estructura.
+```sql
+create table pelicula(
+	id int primary key,
+	titulo varchar(max),
+	votacion_promedio float,
+	votacion_recuento int,
+	fecha_lanzamiento varchar(12),
+	ingresos bigint,
+	duracion int,
+	adult bit,
+	ruta_backdrop varchar(max),
+	presupuesto bigint,
+	pagina_web varchar(max),
+	imdb_id varchar(max),
+	idioma_original varchar(max),
+	titulo_original varchar(max),
+	sinopsis varchar(max),
+	popularidad varchar(10),
+	ruta_poster varchar(max),
+	tagline varchar(max)
+)
+```
+para insertar los datos, utilizaremos la siguiente inserción
+```sql
+INSERT INTO pelicula (id, titulo, votacion_promedio, votacion_recuento, fecha_lanzamiento, ingresos, duracion, adult, ruta_backdrop, presupuesto, pagina_web, imdb_id, idioma_original, titulo_original, sinopsis, popularidad, ruta_poster, tagline)
+SELECT id, titulo, votacion_promedio, votacion_recuento, fecha_lanzamiento, ingresos, duracion, adult, ruta_backdrop, presupuesto, pagina_web, imdb_id, idioma_original, titulo_original, sinopsis, popularidad, ruta_poster, tagline
+FROM peliculas;
+```
+
+### Inserción de datos a las tablas que contiene valores unicos.
+
+Las tablas que contienen valores unicos son las que tienen las siguientes definiciones
+
+```sql
+CREATE TABLE generos(
+	idGenero int primary key identity,
+	genero varchar(max) not null
+)
+CREATE TABLE companias_productoras(
+	idCompania_productora int primary key identity,
+	productora varchar(max) not null
+)
+CREATE TABLE paises_productores(
+	idPaises_productores int primary key identity,
+	pais varchar(max) not null
+)
+CREATE TABLE idiomas_disponibles(
+	idIdiomas_disponibles int primary key identity,
+	idioma varchar(max) not null
+)
+```
+
+El algoritmo que importa los idiomas tiene la siguiente estructura.
+
+```sql
+declare @miTabla as table (
+	id int identity,
+	idioma varchar(max)
+)
+
+-- Verificar si la tabla idiomas_disponibles contiene datos
+if exists (select 1 from idiomas_disponibles)
+begin
+    -- Eliminar todos los registros de la tabla idiomas_disponibles
+    delete from idiomas_disponibles;
+end
+
+insert into @miTabla (idioma)
+select value as idioma
+from (
+    select case
+        -- Primera versión: Separar y eliminar caracteres
+        when idiomas_disponibles like '%,%'
+        then trim(substring(idiomas_disponibles, 3, len(idiomas_disponibles) - 4))
+        -- Segunda versión: Insertar directamente
+        else idiomas_disponibles
+    end as idiomas_disponibles
+    from peliculas
+) as Subquery
+cross apply string_split(idiomas_disponibles, ',') as Split;
+
+update @miTabla
+set idioma = LTRIM(RTRIM(idioma));
+
+insert into idiomas_disponibles (idioma)
+select distinct idioma from @miTabla
+
+select * from idiomas_disponibles
+```
+Al ejecutar la última línea del fragmento de código anterior, obtenemos el siguiente resultado.
+
+![Idiomas](/idioma.png)
+
+Finalmente para la implementación de tablas pivot, vamos a utilizar el siguiente algoritmo.
+```sql
+if exists (select * from idiomas_disponibles)
+begin
+    delete from idiomas_disponibles;
+end
+
+-- Paso 1: Insertar los valores para tabla idiomas_disponibles
+select distinct value
+into #temp_idiomas_disponibles
+from peliculas
+cross apply string_split(idiomas_disponibles, ',')
+where idiomas_disponibles is not null and idiomas_disponibles != '';
+
+insert into idiomas_disponibles (idioma)
+select distinct replace(trim(value),'\"','')
+from #temp_idiomas_disponibles;
+
+drop table #temp_idiomas_disponibles;
+
+-- Paso 2: Insertar los valores para tabla pivot pelicula_idiomas
+if exists (select * from pelicula_idiomas)
+begin
+    delete from pelicula_idiomas;
+end
+
+select distinct value
+into #temp_pelicula_idioma
+from peliculas
+cross apply string_split(replace(idiomas_disponibles, '\"', ''), ',')
+where idiomas_disponibles is not null and idiomas_disponibles != '';
+
+insert into pelicula_idiomas(idIdiomas_disponibles, idPelicula)
+select i.idIdiomas_disponibles, p.id
+from peliculas p
+join #temp_pelicula_idioma t on charindex(t.value, replace(p.idiomas_disponibles, '\"', '')) > 0
+join idiomas_disponibles i on t.value = i.idioma;
+
+drop table #temp_pelicula_idioma;
+```
+
+el cual arroja las siguientes filas en la tabla **pelicula_idiomas**
+
+![pelicula_idiomas](/pelicula-idiomas.png)
+
+
 
 
 
